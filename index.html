@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ستريم موبايل — تحدّي التوقف عند 10</title>
+  <meta name="description" content="Stream Mobile — Stop at 10 Challenge. أوقف المؤقت عند 10.00 بالضبط واربح جائزة!">
+  <meta name="theme-color" content="#081638">
+  <link rel="icon" type="image/png" href="assets/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link id="bs-rtl" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css">
+  <link id="bs-ltr" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" disabled>
+  <link rel="stylesheet" href="css/style.css">
+  <script>window.STREAM_GAME_MODE = "genuine";</script>
+</head>
+<body>
+  <noscript>
+    <p class="noscript">هذه اللعبة تتطلب تفعيل JavaScript. — This game requires JavaScript.</p>
+  </noscript>
+
+  <div class="bg-fx" aria-hidden="true">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+
+  <header class="top-bar">
+    <div class="brand-mini">
+      <img src="assets/stream-mobile-logo.jpg" alt="Stream Mobile" class="brand-logo-sm">
+      <span class="brand-name">STREAM&nbsp;MOBILE</span>
+    </div>
+    <div class="lang-seg" role="group" aria-label="Language / اللغة">
+      <button type="button" id="btn-lang-ar" class="lang-btn active" aria-pressed="true">العربية</button>
+      <button type="button" id="btn-lang-en" class="lang-btn" aria-pressed="false">English</button>
+    </div>
+  </header>
+
+  <main class="stage">
+
+    <!-- A. WELCOME -->
+    <section id="screen-welcome" class="screen active" aria-label="Welcome">
+      <img src="assets/stream-mobile-logo.jpg" alt="Stream Mobile" class="welcome-logo">
+      <h1 class="headline" data-i18n="headline"></h1>
+      <p class="tagline" data-i18n="tagline"></p>
+      <ol class="steps">
+        <li><span class="step-num">1</span><span data-i18n="step1"></span></li>
+        <li><span class="step-num">2</span><span data-i18n="step2"></span></li>
+        <li><span class="step-num">3</span><span data-i18n="step3"></span></li>
+      </ol>
+      <button type="button" id="btn-start" class="btn-cta" data-i18n="start"></button>
+      <div class="camera-box">
+        <button type="button" id="btn-camera" class="btn-ghost"></button>
+        <span id="camera-status" class="chip" data-state="idle"></span>
+      </div>
+      <button type="button" id="btn-kb" class="btn-link" data-i18n="startKeyboard"></button>
+      <p class="hint" data-i18n="keyboardHint"></p>
+      <p class="hint tiny" data-i18n="privacyNote"></p>
+    </section>
+
+    <!-- B. READY -->
+    <section id="screen-ready" class="screen" aria-label="Get ready">
+      <h2 class="screen-title" data-i18n="readyTitle"></h2>
+      <div class="hold-ring-wrap" id="hold-ring-wrap">
+        <svg class="hold-ring" viewBox="0 0 120 120" aria-hidden="true">
+          <circle class="ring-bg" cx="60" cy="60" r="52"></circle>
+          <circle class="ring-fg" id="ring-fg" cx="60" cy="60" r="52"></circle>
+        </svg>
+        <div class="hand-icon" id="hand-icon" aria-hidden="true">
+          <svg class="hand-open" viewBox="0 0 100 100">
+            <g fill="currentColor">
+              <rect x="25" y="24" width="10.5" height="40" rx="5.2"></rect>
+              <rect x="38" y="14" width="10.5" height="50" rx="5.2"></rect>
+              <rect x="51" y="18" width="10.5" height="46" rx="5.2"></rect>
+              <rect x="64" y="28" width="9.5" height="36" rx="4.7"></rect>
+              <ellipse cx="48" cy="72" rx="27" ry="17"></ellipse>
+              <rect x="6" y="47" width="28" height="10.5" rx="5.2" transform="rotate(-32 20 52)"></rect>
+            </g>
+          </svg>
+          <svg class="hand-fist" viewBox="0 0 100 100">
+            <g fill="currentColor">
+              <rect x="21" y="28" width="60" height="46" rx="17"></rect>
+              <rect x="12" y="44" width="32" height="13" rx="6.5" transform="rotate(18 28 50)"></rect>
+            </g>
+            <g stroke="rgba(8,22,56,0.5)" stroke-width="4.5" stroke-linecap="round" fill="none">
+              <path d="M35 28v16"></path>
+              <path d="M50 28v16"></path>
+              <path d="M65 28v16"></path>
+            </g>
+          </svg>
+        </div>
+        <div class="hold-count" id="hold-count" aria-hidden="true"></div>
+      </div>
+      <div id="kb-ready" class="kb-block" hidden>
+        <div class="space-key">Space</div>
+      </div>
+      <p class="instruction" id="ready-instruction"></p>
+      <span id="hand-chip" class="chip" data-state="idle"></span>
+      <p class="hint" id="ready-kb-hint" data-i18n="keyboardHint"></p>
+    </section>
+
+    <!-- C. RUNNING -->
+    <section id="screen-running" class="screen" aria-label="Timer running">
+      <div class="running-label" data-i18n="running"></div>
+      <div class="timer" id="timer">00.00</div>
+      <p class="instruction" id="stop-instruction"></p>
+      <div id="go-flash" class="go-flash" data-i18n="go" aria-hidden="true"></div>
+      <div id="hand-lost" class="hand-lost" hidden>
+        <p class="hand-lost-title" data-i18n="handLost"></p>
+        <p class="hand-lost-hint" data-i18n="handLostHint"></p>
+      </div>
+    </section>
+
+    <!-- D. RESULT -->
+    <section id="screen-result" class="screen" aria-label="Result">
+      <p class="final-label" data-i18n="finalTime"></p>
+      <div class="timer result-timer" id="final-timer">00.00</div>
+      <h2 class="result-headline" id="result-headline"></h2>
+      <p class="result-msg" id="result-msg"></p>
+      <p class="prize-note" id="prize-note" hidden></p>
+      <p class="reset-countdown" id="reset-countdown"></p>
+      <img src="assets/stream-mobile-logo.jpg" alt="Stream Mobile" class="result-logo">
+    </section>
+
+  </main>
+
+  <!-- Camera preview (can be hidden from the staff bar) -->
+  <div id="preview-wrap" class="preview-wrap hidden" aria-hidden="true">
+    <video id="preview-video" playsinline muted autoplay></video>
+    <canvas id="preview-canvas" width="640" height="360"></canvas>
+  </div>
+
+  <!-- E. Staff controls (kept separate from the customer interface) -->
+  <div class="staff-bar" role="toolbar" aria-label="Staff controls">
+    <span class="lbl" data-i18n="staffTitle"></span>
+    <span id="mode-badge" class="mode-badge genuine">GENUINE MODE</span>
+    <button type="button" id="btn-staff-camera" class="staff-btn"></button>
+    <button type="button" id="btn-staff-preview" class="staff-btn"></button>
+    <button type="button" id="btn-staff-sound" class="staff-btn"></button>
+    <button type="button" id="btn-staff-fullscreen" class="staff-btn" data-i18n="fullscreen"></button>
+    <button type="button" id="btn-staff-restart" class="staff-btn" data-i18n="restart"></button>
+    <span id="staff-actual" class="staff-actual"></span>
+  </div>
+
+  <canvas id="confetti" class="confetti-canvas" aria-hidden="true"></canvas>
+  <div id="toast" class="toast-msg" role="status" aria-live="polite"></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/localization.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/confetti.js"></script>
+  <script src="js/hand-tracking.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>
