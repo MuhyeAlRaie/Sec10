@@ -28,32 +28,9 @@
     DEMO_FORCED_TIME: "10.00",   /* displayed result in demo mode       */
 
     /* ---- Flow timings ------------------------------------------- */
-    FIST_HOLD_SECONDS: 3,        /* continuous fist time needed to start */
-    FIST_GAP_TOLERANCE_MS: 250,  /* brief detection gaps that do NOT reset the hold */
-    OPEN_DEBOUNCE_MS: 180,       /* open hand must be stable this long before the timer stops */
-    OPEN_STOP_ARM_MS: 300,       /* open-hand stops are ignored in the first N ms of a round */
-    RESULT_DISPLAY_SECONDS: 10,  /* result screen duration before auto reset */
-    RESET_TRANSITION_MS: 350,    /* short transition back to the welcome screen */
-    HAND_LOST_GRACE_MS: 800,     /* hand may vanish this long before the "hand lost" warning */
-
-    /* ---- Gesture stability --------------------------------------- */
-    GESTURE_WINDOW_MS: 350,      /* temporal smoothing window */
-    GESTURE_MIN_FRAMES: 3,       /* minimum frames required inside the window */
-    GESTURE_STABLE_RATIO: 0.7,   /* 70% of frames must agree on a gesture */
-
-    /* ---- Camera --------------------------------------------------- */
-    CAMERA: {
-      WIDTH: 1280,               /* requested camera width  */
-      HEIGHT: 720,               /* requested camera height */
-      PROCESS_INTERVAL_MS: 33    /* ~30 fps hand processing */
-    },
-
-    /* ---- MediaPipe CDN assets (the only required network assets) --- */
-    MEDIAPIPE: {
-      MODULE_URL: "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs",
-      WASM_ROOT: "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm",
-      MODEL_URL: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
-    },
+    RESULT_LOCK_MS: 500,         /* tiny guard so a double-tap on Space cannot skip the
+                                    result instantly. Set 0 to remove it completely. */
+    RESET_TRANSITION_MS: 350,    /* short transition back to the welcome screen (Esc / Restart) */
 
     /* ---- Localization ---------------------------------------------- */
     DEFAULT_LANG: "ar",

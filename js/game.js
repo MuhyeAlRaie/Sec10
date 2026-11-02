@@ -2,8 +2,13 @@
    Stream Mobile — Stop at 10 Challenge
    js/game.js — main game controller / state machine
    -------------------------------------------------------------
-   Game phases:  welcome → ready → running → result → resetting → welcome
-   Input modes:  "camera" (MediaPipe hand gestures) | "keyboard" (Space)
+   Game phases:  welcome → ready → running → result → ready → …
+   Input:        the Space key only.
+     welcome  + Space → ready
+     ready    + Space → timer starts
+     running  + Space → timer stops, result shown
+     result   + Space → try again (straight back to ready, no wait)
+   Esc = staff reset back to the welcome screen.
 
    Timing uses performance.now() exclusively (monotonic) — never a
    decrementing setInterval counter.
@@ -22,13 +27,9 @@
   var I18N = window.I18N;
   var SoundFX = window.SoundFX;
   var Confetti = window.Confetti;
-  var HandTracker = window.HandTracker;
 
   var MODE = CFG.GAME_MODE;            /* "genuine" | "demo" */
   var IS_DEMO = MODE === "demo";
-  var HOLD_MS = CFG.FIST_HOLD_SECONDS * 1000;
-  var RING_C = 2 * Math.PI * 52;       /* SVG ring circumference (r = 52) */
-  var ARM_MS = CFG.OPEN_STOP_ARM_MS;
 
   /* ---------- DOM ---------- */
   function $(id) { return document.getElementById(id); }
@@ -43,75 +44,30 @@
     timer: $("timer"),
     finalTimer: $("final-timer"),
     goFlash: $("go-flash"),
-    stopInstruction: $("stop-instruction"),
-    handLost: $("hand-lost"),
-    readyInstruction: $("ready-instruction"),
-    handChip: $("hand-chip"),
-    ringWrap: $("hold-ring-wrap"),
-    ringFg: $("ring-fg"),
-    holdCount: $("hold-count"),
-    kbReady: $("kb-ready"),
-    readyKbHint: $("ready-kb-hint"),
-    cameraStatus: $("camera-status"),
     btnStart: $("btn-start"),
-    btnKb: $("btn-kb"),
-    btnCamera: $("btn-camera"),
     btnLangAr: $("btn-lang-ar"),
     btnLangEn: $("btn-lang-en"),
-    previewWrap: $("preview-wrap"),
-    previewVideo: $("preview-video"),
-    previewCanvas: $("preview-canvas"),
     modeBadge: $("mode-badge"),
-    staffCamera: $("btn-staff-camera"),
-    staffPreview: $("btn-staff-preview"),
     staffSound: $("btn-staff-sound"),
     staffFullscreen: $("btn-staff-fullscreen"),
     staffRestart: $("btn-staff-restart"),
     staffActual: $("staff-actual"),
     resultHeadline: $("result-headline"),
     resultMsg: $("result-msg"),
-    prizeNote: $("prize-note"),
-    resetCountdown: $("reset-countdown"),
-    toast: $("toast")
+    prizeNote: $("prize-note")
   };
-
-  var pctx = el.previewCanvas.getContext("2d");
-
-  /* Standard 21-point hand connections (for the preview overlay) */
-  var HAND_CONN = [
-    [0, 1], [1, 2], [2, 3], [3, 4],
-    [0, 5], [5, 6], [6, 7], [7, 8], [5, 9],
-    [9, 10], [10, 11], [11, 12], [9, 13],
-    [13, 14], [14, 15], [15, 16], [13, 17],
-    [17, 18], [18, 19], [19, 20], [0, 17]
-  ];
 
   /* ---------- state ---------- */
   var S = {
     phase: "welcome",        /* welcome | ready | running | result | resetting */
-    inputMode: null,         /* "camera" | "keyboard" */
-    gesture: "NO_HAND",      /* NO_HAND | OPEN | FIST | UNSURE (smoothed) */
-    prevGesture: "NO_HAND",
-    gestureChangedAt: 0,
-    lastHandSeen: 0,
-    chipGesture: "",
-    holdStart: 0,
-    lastFistFrame: 0,
-    holdTicks: 0,
     startTime: 0,
     elapsed: 0,
     actualElapsed: 0,
     lastOutcome: null,       /* { win: boolean, display: string } */
-    resultUntil: 0,
+    resultShownAt: 0,
     resetTimeout: 0,
-    cameraActive: false,
-    camBusy: false,
-    camState: "off",
-    previewOn: true,
-    previewVisible: false,
     soundOn: true,
     goFlashUntil: 0,
-    instructionKey: "",
     reducedMotion: window.matchMedia &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches
   };
@@ -131,30 +87,6 @@
     Object.keys(el.screens).forEach(function (k) {
       el.screens[k].classList.toggle("active", k === name);
     });
-    updatePreviewVisibility();
-  }
-
-  function showToast(msg, ms) {
-    el.toast.textContent = msg;
-    el.toast.classList.add("show");
-    clearTimeout(showToast._t);
-    showToast._t = setTimeout(function () {
-      el.toast.classList.remove("show");
-    }, ms || 3000);
-  }
-
-  function setChip(node, text, state) {
-    var sig = text + "|" + state;
-    if (node._sig === sig) return;
-    node._sig = sig;
-    node.textContent = text;
-    node.setAttribute("data-state", state);
-  }
-
-  function setInstruction(key) {
-    if (S.instructionKey === key) return;
-    S.instructionKey = key;
-    el.readyInstruction.textContent = I18N.t(key);
   }
 
   function bindButton(btn, fn) {
@@ -164,215 +96,17 @@
     });
   }
 
-  /* ---------- camera management ---------- */
-
-  function camStateColor(code) {
-    if (code === "ready") return "ok";
-    if (code === "requesting" || code === "loading") return "busy";
-    if (code === "off") return "idle";
-    return "err";
-  }
-
-  function setCamState(code) {
-    S.camState = code;
-    setChip(el.cameraStatus, I18N.t("camStatus_" + code), camStateColor(code));
-    updateCameraButtons();
-  }
-
-  function updateCameraButtons() {
-    var labelKey = S.cameraActive ? "disableCamera" : "enableCamera";
-    el.btnCamera.textContent = I18N.t(labelKey);
-    el.staffCamera.textContent = I18N.t(labelKey);
-    el.btnCamera.disabled = S.camBusy;
-    el.staffCamera.disabled = S.camBusy;
-  }
-
-  function startCamera() {
-    if (S.cameraActive || S.camBusy) return;
-    S.camBusy = true;
-    updateCameraButtons();
-    setCamState("requesting");
-    SoundFX.unlock();
-    HandTracker.start(el.previewVideo, {
-      onStatus: function (code) { setCamState(code); },
-      onGesture: handleGesture
-    }).then(function () {
-      S.cameraActive = true;
-      setCamState("ready");
-      showToast(I18N.t("camStatus_ready"));
-    }).catch(function (err) {
-      var code = (err && err.code) ? err.code : "error";
-      S.cameraActive = false;
-      setCamState(code);
-      showToast(I18N.t("camStatus_" + code), 4500);
-    }).then(function () {
-      S.camBusy = false;
-      updateCameraButtons();
-      updatePreviewVisibility();
-    });
-  }
-
-  function stopCamera(silent) {
-    HandTracker.stop();
-    S.cameraActive = false;
-    setCamState("off");
-    updatePreviewVisibility();
-    if (!silent) showToast(I18N.t("camStatus_off"));
-
-    /* If a round was in progress in camera mode, hand control to the
-       keyboard so the participant can always finish. */
-    if (S.inputMode === "camera") {
-      S.inputMode = "keyboard";
-      if (S.phase === "ready") renderReadyStatic();
-      if (S.phase === "running") {
-        el.stopInstruction.textContent = I18N.t("kbPressSpaceStop");
-        showToast(I18N.t("cameraStoppedNotice"), 4000);
-      }
-    }
-  }
-
-  function toggleCamera() {
-    if (S.camBusy) return;
-    if (S.cameraActive) stopCamera();
-    else startCamera();
-  }
-
-  /* ---------- preview ---------- */
-
-  function updatePreviewVisibility() {
-    var show = S.previewOn && S.cameraActive &&
-               S.phase === "ready" && S.inputMode === "camera";
-    S.previewVisible = show;
-    el.previewWrap.classList.toggle("hidden", !show);
-    if (!show) clearPreview();
-  }
-
-  function drawPreview(lm) {
-    if (!S.previewVisible || !lm) return;
-    var cw = el.previewCanvas.width;
-    var ch = el.previewCanvas.height;
-    pctx.clearRect(0, 0, cw, ch);
-    pctx.strokeStyle = "rgba(255,255,255,0.85)";
-    pctx.lineWidth = 2;
-    for (var i = 0; i < HAND_CONN.length; i++) {
-      var a = lm[HAND_CONN[i][0]];
-      var b = lm[HAND_CONN[i][1]];
-      pctx.beginPath();
-      pctx.moveTo(a.x * cw, a.y * ch);
-      pctx.lineTo(b.x * cw, b.y * ch);
-      pctx.stroke();
-    }
-    pctx.fillStyle = "#ff2e44";
-    for (var j = 0; j < lm.length; j++) {
-      pctx.beginPath();
-      pctx.arc(lm[j].x * cw, lm[j].y * ch, 3.2, 0, Math.PI * 2);
-      pctx.fill();
-    }
-  }
-
-  function clearPreview() {
-    pctx.clearRect(0, 0, el.previewCanvas.width, el.previewCanvas.height);
-  }
-
-  /* ---------- gesture intake ---------- */
-
-  function handleGesture(g, landmarks, tNow) {
-    S.gesture = g;
-    if (g !== S.prevGesture) {
-      S.gestureChangedAt = tNow;
-      S.prevGesture = g;
-    }
-    if (g !== "NO_HAND") S.lastHandSeen = tNow;
-
-    /* Subtle sound on the NO_HAND → OPEN transition while waiting */
-    if (S.phase === "ready" && S.inputMode === "camera") {
-      if (g === "OPEN" && S.chipGesture !== "OPEN") SoundFX.play("detect");
-      S.chipGesture = g;
-    }
-
-    drawPreview(landmarks);
-  }
-
-  /* ---------- phase: ready ---------- */
-
-  function renderReadyStatic() {
-    var kb = S.inputMode === "keyboard";
-    el.kbReady.hidden = !kb;
-    el.ringWrap.hidden = kb;
-    el.handChip.hidden = kb;
-    el.readyKbHint.hidden = kb;
-    el.ringWrap.classList.remove("holding", "is-fist");
-    el.ringFg.style.strokeDashoffset = String(RING_C);
-    el.holdCount.textContent = "";
-    setInstruction(kb ? "kbPressSpaceStart" : "readyRaiseHand");
-    S.instructionKey = kb ? "kbPressSpaceStart" : "readyRaiseHand";
-  }
-
-  function renderReady(tNow) {
-    if (S.inputMode !== "camera") return;
-    var g = S.gesture;
-
-    if (g === "NO_HAND") setChip(el.handChip, I18N.t("noHand"), "idle");
-    else setChip(el.handChip, I18N.t("handDetected"), "ok");
-
-    if (g === "FIST") setInstruction("holdFist");
-    else if (g === "OPEN" || g === "UNSURE") setInstruction("nowMakeFist");
-    else setInstruction("readyRaiseHand");
-
-    el.ringWrap.classList.toggle("is-fist", g === "FIST");
-
-    if (g === "FIST") {
-      /* Continuous-fist tracking with a short gap tolerance so one
-         dropped frame does not punish the participant. */
-      if (S.lastFistFrame === 0 ||
-          tNow - S.lastFistFrame > CFG.FIST_GAP_TOLERANCE_MS) {
-        S.holdStart = tNow;
-        S.holdTicks = 0;
-      }
-      S.lastFistFrame = tNow;
-
-      var held = tNow - S.holdStart;
-      var p = Math.min(1, held / HOLD_MS);
-      el.ringFg.style.strokeDashoffset = String(RING_C * (1 - p));
-
-      var sec = Math.floor(held / 1000);
-      el.holdCount.textContent = String(Math.max(0, CFG.FIST_HOLD_SECONDS - sec));
-      if (sec > S.holdTicks) {
-        S.holdTicks = sec;
-        if (sec < CFG.FIST_HOLD_SECONDS) SoundFX.play("hold");
-      }
-      el.ringWrap.classList.add("holding");
-
-      if (held >= HOLD_MS) goStart(tNow);
-    } else if (S.lastFistFrame !== 0 &&
-               tNow - S.lastFistFrame > CFG.FIST_GAP_TOLERANCE_MS) {
-      /* fist lost for longer than the tolerance → reset the hold */
-      S.lastFistFrame = 0;
-      S.holdStart = 0;
-      S.holdTicks = 0;
-      el.ringFg.style.strokeDashoffset = String(RING_C);
-      el.holdCount.textContent = "";
-      el.ringWrap.classList.remove("holding");
-    }
-  }
-
   /* ---------- phase transitions ---------- */
 
   function enterReady() {
     clearTimeout(S.resetTimeout);
-    S.holdStart = 0;
-    S.lastFistFrame = 0;
-    S.holdTicks = 0;
-    S.gesture = "NO_HAND";
-    S.prevGesture = "NO_HAND";
-    S.gestureChangedAt = 0;
-    S.chipGesture = "";
-    S.lastHandSeen = performance.now();
+    Confetti.stopNow();
+    S.lastOutcome = null;
     el.timer.textContent = "00.00";
-    el.handLost.hidden = true;
+    el.staffActual.textContent = "";
+    el.goFlash.classList.remove("show");
+    S.goFlashUntil = 0;
     S.phase = "ready";
-    renderReadyStatic();
-    if (S.cameraActive) HandTracker.resume();
     showScreen("ready");
   }
 
@@ -380,18 +114,9 @@
     if (S.phase !== "ready") return;   /* one-shot guard */
     S.phase = "running";
     S.startTime = tNow || performance.now();
-    S.lastHandSeen = S.startTime;
-    S.holdStart = 0;
-    S.lastFistFrame = 0;
-    S.holdTicks = 0;
-    el.ringWrap.classList.remove("holding", "is-fist");
-    el.ringFg.style.strokeDashoffset = String(RING_C);
-    el.stopInstruction.textContent = I18N.t(
-      S.inputMode === "keyboard" ? "kbPressSpaceStop" : "openHandToStop");
-    el.handLost.hidden = true;
     showScreen("running");
     el.goFlash.classList.remove("show");
-    void el.goFlash.offsetWidth;      /* restart the CSS animation */
+    void el.goFlash.offsetWidth;       /* restart the CSS animation */
     el.goFlash.classList.add("show");
     S.goFlashUntil = performance.now() + 750;
     SoundFX.play("go");
@@ -438,9 +163,8 @@
 
     S.lastOutcome = { win: win, display: display };
     S.phase = "result";
-    S.resultUntil = performance.now() + CFG.RESULT_DISPLAY_SECONDS * 1000;
+    S.resultShownAt = performance.now();
     renderResult();
-    HandTracker.pause();
     showScreen("result");
 
     if (win) {
@@ -468,67 +192,53 @@
     el.prizeNote.hidden = !win;
   }
 
-  function renderResultTick(tNow) {
-    var remain = Math.max(0, Math.ceil((S.resultUntil - tNow) / 1000));
-    var txt = I18N.t("resetIn", { s: remain });
-    if (el.resetCountdown.textContent !== txt) el.resetCountdown.textContent = txt;
-    if (tNow >= S.resultUntil) resetGame();
-  }
-
-  /* ---------- reset ---------- */
+  /* ---------- reset (staff: Esc / Restart button) ---------- */
 
   function resetGame() {
     if (S.phase === "resetting") return;
     S.phase = "resetting";
     Confetti.stopNow();
     clearTimeout(S.resetTimeout);
-
-    S.holdStart = 0;
-    S.lastFistFrame = 0;
-    S.holdTicks = 0;
-    S.gesture = "NO_HAND";
-    S.prevGesture = "NO_HAND";
-    S.gestureChangedAt = 0;
     S.lastOutcome = null;
     el.timer.textContent = "00.00";
     el.staffActual.textContent = "";
-    el.handLost.hidden = true;
-    HandTracker.pause();
 
     S.resetTimeout = setTimeout(function () {
       S.phase = "welcome";
-      S.inputMode = null;
       showScreen("welcome");
     }, CFG.RESET_TRANSITION_MS);
   }
 
-  /* ---------- entry points ---------- */
+  /* ---------- the one control: Space ---------- */
 
-  function startChallenge(forceKeyboard) {
-    if (S.phase !== "welcome") return;   /* guard against double triggers */
-    SoundFX.unlock();
-    SoundFX.play("click");
-    if (!forceKeyboard && S.cameraActive && HandTracker.ready) {
-      S.inputMode = "camera";
-    } else {
-      if (!forceKeyboard) showToast(I18N.t("kbFallbackNotice"), 4500);
-      S.inputMode = "keyboard";
-    }
-    enterReady();
-  }
-
-  /* Space: welcome → start · ready → start timer · running → stop timer */
+  /* welcome → ready → running → result → ready (try again) → … */
   function handleSpace() {
-    if (S.phase === "welcome") { startChallenge(false); return; }
-    if (S.phase === "ready") { goStart(performance.now()); return; }
-    if (S.phase === "running") { doStop(performance.now()); return; }
-    /* result / resetting: ignored — the automatic reset manages the flow */
+    var now = performance.now();
+    switch (S.phase) {
+      case "welcome":
+        SoundFX.play("click");
+        enterReady();
+        break;
+      case "ready":
+        goStart(now);
+        break;
+      case "running":
+        doStop(now);
+        break;
+      case "result":
+        /* Try again immediately. The tiny lock only stops a
+           double-tap from skipping the result by accident. */
+        if (now - S.resultShownAt < (CFG.RESULT_LOCK_MS || 0)) return;
+        SoundFX.play("click");
+        enterReady();
+        break;
+      /* resetting: ignored for the brief transition */
+    }
   }
 
   /* ---------- staff labels / language ---------- */
 
   function updateStaffLabels() {
-    el.staffPreview.textContent = I18N.t(S.previewOn ? "previewHide" : "previewShow");
     el.staffSound.textContent = I18N.t(S.soundOn ? "soundOn" : "soundOff");
   }
 
@@ -542,15 +252,7 @@
 
   function refreshTexts() {
     updateStaffLabels();
-    updateCameraButtons();
     updateLangButtons();
-    setCamState(S.camState);
-    S.instructionKey = "";
-    if (S.phase === "ready") renderReadyStatic();
-    if (S.phase === "running") {
-      el.stopInstruction.textContent = I18N.t(
-        S.inputMode === "keyboard" ? "kbPressSpaceStop" : "openHandToStop");
-    }
     if (S.phase === "result") renderResult();
   }
 
@@ -580,27 +282,8 @@
       S.goFlashUntil = 0;
     }
 
-    switch (S.phase) {
-      case "ready":
-        renderReady(tNow);
-        break;
-      case "running":
-        el.timer.textContent = fmtTime((tNow - S.startTime) / 1000);
-        if (S.inputMode === "camera") {
-          var lost = (tNow - S.lastHandSeen) > CFG.HAND_LOST_GRACE_MS;
-          if (lost === el.handLost.hidden) el.handLost.hidden = !lost;
-          /* Stop on a stable open hand — but only after the round has
-             been running long enough to ignore leftover classifications. */
-          if (S.gesture === "OPEN" && S.gestureChangedAt > S.startTime &&
-              tNow - S.startTime >= ARM_MS &&
-              tNow - S.gestureChangedAt >= CFG.OPEN_DEBOUNCE_MS) {
-            doStop(tNow);
-          }
-        }
-        break;
-      case "result":
-        renderResultTick(tNow);
-        break;
+    if (S.phase === "running") {
+      el.timer.textContent = fmtTime((tNow - S.startTime) / 1000);
     }
   }
 
@@ -618,7 +301,6 @@
       /* Staff instant reset */
       if (S.phase !== "welcome") resetGame();
     }
-    /* Enter keeps native button activation for accessibility. */
   });
 
   /* ---------- init ---------- */
@@ -636,23 +318,16 @@
       } catch (e) {}
     }
 
-    el.ringFg.style.strokeDashoffset = String(RING_C);
     updateLangButtons();
     updateStaffLabels();
-    setCamState("off");
-    setInstruction("readyRaiseHand");
     showScreen("welcome");
     I18N.onChange(refreshTexts);
 
-    bindButton(el.btnStart, function () { startChallenge(false); });
-    bindButton(el.btnKb, function () { startChallenge(true); });
-    bindButton(el.btnCamera, toggleCamera);
-    bindButton(el.staffCamera, toggleCamera);
-    bindButton(el.staffPreview, function () {
-      S.previewOn = !S.previewOn;
-      updateStaffLabels();
-      updatePreviewVisibility();
-      SoundFX.play("click");
+    /* The big start button is a visual prompt; clicking it also works,
+       but the intended control is Space. */
+    bindButton(el.btnStart, function () {
+      SoundFX.unlock();
+      if (S.phase === "welcome") handleSpace();
     });
     bindButton(el.staffSound, function () {
       S.soundOn = !S.soundOn;

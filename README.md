@@ -2,11 +2,10 @@
 
 A production-ready, dependency-free browser game for Stream Mobile marketing
 events. The participant tries to stop the timer at exactly **10.00 seconds** —
-by opening their hand in front of the camera (real-time hand tracking) or by
-pressing the **Space** key.
+using only the **Space** key. No camera, no hand tracking.
 
-Built with HTML5 + CSS3 + vanilla JavaScript + Bootstrap 5.3 + MediaPipe Hand
-Landmarker + Web Audio API. **No backend, no database, no build step, no npm.**
+Built with HTML5 + CSS3 + vanilla JavaScript + Bootstrap 5.3 + Web Audio API.
+**No backend, no database, no build step, no npm.**
 Deploy the files as-is to GitHub Pages.
 
 ---
@@ -58,8 +57,7 @@ js/config.js          ← GAME_MODE + all organizer-adjustable constants
 js/localization.js    ← Arabic (RTL, default) + English (LTR) dictionaries
 js/audio.js           ← Web Audio API sound effects (no audio files)
 js/confetti.js        ← celebration particles (respects reduced motion)
-js/hand-tracking.js   ← MediaPipe Hand Landmarker + gesture classifier
-js/game.js            ← state machine: welcome → ready → running → result
+js/game.js            ← state machine: welcome → ready → running → result → ready…
 assets/stream-mobile-logo.jpg
 assets/favicon.png
 .nojekyll             ← tells GitHub Pages to skip Jekyll processing
@@ -88,9 +86,8 @@ README.md
 
 ### Testing locally before the event
 
-Camera access requires a **secure context**. Opening `index.html` directly
-from disk (`file://`) will block the camera *and* the MediaPipe module, so use
-one of these instead:
+The game also runs straight from disk, but for the closest match to the
+live site you can serve it locally:
 
 ```bash
 # Python (preinstalled on macOS/Linux)
@@ -99,66 +96,43 @@ python3 -m http.server 8000
 # then open http://localhost:8000
 ```
 
-…or use the **Live Server** extension in VS Code. `http://localhost` counts as
-a secure context, so the camera works there.
+…or use the **Live Server** extension in VS Code.
 
 ---
 
-## 4. Camera, permissions & privacy
+## 4. Privacy & network assets
 
-- The camera **never** activates before a human clicks **Enable camera**.
-- Supported browsers: Chrome / Edge / Firefox / Safari 16.4+ (recommended:
-  Chrome or Edge on the event laptop).
-- The page must be served over **HTTPS** (GitHub Pages) or `http://localhost`.
-- If the browser previously blocked the camera: click the padlock/tune icon in
-  the address bar → *Site settings* → allow *Camera* → reload.
-- **Privacy:** every video frame is processed locally by WebAssembly inside
-  the browser. Nothing is uploaded, recorded, or stored — no photos of
-  participants exist anywhere.
+- The game uses **no camera and no microphone** and collects no data.
+  Nothing is uploaded, recorded, or stored.
+- It works from any static host (GitHub Pages) and even from `file://`.
 
-### Network assets loaded from CDNs (require internet on the event machine)
+### Network assets loaded from CDNs
 
 | Asset | URL | Used for |
 |---|---|---|
-| MediaPipe tasks-vision module | `cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs` | hand tracking JS |
-| MediaPipe WASM runtime | `cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm` | hand tracking engine |
-| Hand landmark model | `storage.googleapis.com/mediapipe-models/…/hand_landmarker.task` | the ML model |
 | Bootstrap 5.3.3 (LTR + RTL) | `cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/...` | responsive layout utilities |
 | Cairo font | `fonts.googleapis.com` | Arabic + Latin typography |
 
 If the venue has no internet, download those files, place them in the project
-(e.g. `vendor/`), and update the URLs at the top of `js/config.js` plus the
-`<link>` tags in `index.html`/`demo.html`. Everything else is offline-ready,
-and if a CDN fails the game automatically stays playable with the keyboard.
+(e.g. `vendor/`) and update the `<link>` tags in `index.html`. The game logic
+itself needs no network at all.
 
----
+## 5. How to play (Space only)
 
-## 5. How to play
+1. **Welcome screen** → press **Space** to get ready.
+2. **Ready screen** → press **Space** to start the timer.
+3. **Timer running** → press **Space** to stop it as close to **10.00** as possible.
+4. **Result screen** → press **Space** to **try again** — it goes straight back to
+   the ready screen. There is no waiting time or auto-reset countdown.
 
-**Camera mode** (default flow)
-1. Welcome screen → enable the camera → **Start Challenge**.
-2. Show an **open hand** to the camera — the “hand detected ✓” chip lights up.
-3. **Close it into a fist** and hold — a 3-2-1 ring counts down.
-4. At zero the timer starts automatically.
-5. **Open the hand** to stop the timer as close to 10.00 as possible.
-6. Result shows for exactly 10 seconds with a visible countdown, then the game
-   resets itself for the next participant.
-
-**Keyboard mode** (camera denied / unavailable / ModelPipe failure)
-- Click **Play with keyboard (Space)** or just press **Space** on the welcome
-  screen — the game tells you it switched to keyboard mode.
-- **Space** starts the timer, **Space** again stops it. Holding Space is
-  ignored, and the page can never scroll.
+Notes
+- Holding Space is ignored, and the page can never scroll.
+- A tiny `RESULT_LOCK_MS` guard (default 0.5 s) stops an accidental double-tap
+  from skipping the result; set it to `0` to remove it.
 - **Esc** = instant staff reset back to the welcome screen.
-- After start, the game never requires a mouse again.
-
-**Staff bar (bottom of the screen):** camera on/off · camera preview show/hide ·
-sound on/off · fullscreen · restart · mode badge. If the hand disappears while
-the timer is running, a warning appears and the timer keeps running honestly
-until the hand returns or Space stops it — a lost hand is never treated as a
-win and never silently resets the game.
-
----
+- **Staff bar (bottom):** sound on/off · fullscreen · restart · mode badge.
+  These are optional mouse utilities for the operator; the game itself never
+  needs the mouse.
 
 ## 6. Organizer configuration (`js/config.js`)
 
@@ -167,12 +141,7 @@ win and never silently resets the game.
 | `WIN_TOLERANCE_SECONDS` | `0.00` | Win margin around 10.00. Judged on the **displayed** 2-decimal value, so the screen and the verdict always agree. `0.00` = display must read exactly `10.00`. Use e.g. `0.10` for a friendlier event. |
 | `TARGET_SECONDS` | `10` | The target time. |
 | `DEMO_FORCED_TIME` | `"10.00"` | Displayed result in demo mode. |
-| `RESULT_DISPLAY_SECONDS` | `10` | How long the result stays before auto reset. |
-| `FIST_HOLD_SECONDS` | `3` | Continuous fist hold needed to start. |
-| `FIST_GAP_TOLERANCE_MS` | `250` | Detection dropouts that don't cancel the hold. |
-| `OPEN_DEBOUNCE_MS` | `180` | How long the open hand must be stable before the stop counts. |
-| `CAMERA.WIDTH / HEIGHT` | `1280 / 720` | Requested camera resolution (lower it on weak laptops). |
-| `CAMERA.PROCESS_INTERVAL_MS` | `33` | Hand-processing rate (~30 fps). Raise to `50` to save CPU. |
+| `RESULT_LOCK_MS` | `500` | Anti-double-tap guard on the result screen before Space can start a new try (`0` = none). |
 | `PRIZE_CLAIM_MESSAGE` | ar/en text | Winner note; set to `null` to hide. |
 | `DEFAULT_LANG` | `"ar"` | First-load language (the choice then persists per browser session). |
 
@@ -180,35 +149,24 @@ win and never silently resets the game.
 
 ## 7. Testing checklist for the event
 
-- [ ] Open the site over HTTPS (or localhost) in Chrome/Edge.
+- [ ] Open the site in Chrome/Edge (any browser works).
 - [ ] Welcome screen appears in **Arabic** with the Stream Mobile logo.
 - [ ] Toggle **English** → layout flips to LTR instantly, no reload.
-- [ ] Click **Enable camera** → browser asks permission → allow → status chip
-      turns “camera is ready ✓” and the preview appears.
-- [ ] **Camera flow:** open hand → chip lights up → fist 3 s (ring fills,
-      3-2-1) → timer starts → open hand stops it → result + auto reset.
-- [ ] **Keyboard flow:** press Space ×3 (start round / start timer / stop
-      timer) → result; holding Space does nothing extra.
+- [ ] Press Space ×3 (get ready / start timer / stop timer) → result.
+- [ ] On the result screen press Space → returns to the ready screen at once.
+- [ ] Holding Space does nothing extra.
 - [ ] **Genuine version:** a random stop gives a lose message and the *actual*
       measured time — never 10.00 unless truly achieved.
 - [ ] **Demo version:** every stop shows `10.00` + confetti + win message, the
       staff bar shows the real internal time, and the badge reads DEMO MODE.
-- [ ] Result screen auto-returns to welcome after 10 s; **Restart** and **Esc**
-      also reset instantly.
-- [ ] Sound toggle works; audio starts only after the first interaction.
+- [ ] **Restart** and **Esc** return to the welcome screen instantly.
+- [ ] Sound toggle works; audio starts only after the first keypress.
 - [ ] Fullscreen works on the event display.
-
----
 
 ## 8. Troubleshooting
 
 | Symptom | Fix |
 |---|---|
-| “This browser does not support camera access” | You opened the page via `file://` or plain HTTP — use GitHub Pages (HTTPS) or `http://localhost`. |
-| Camera permission was denied by accident | Padlock icon in the address bar → Site settings → allow Camera → reload. |
-| “No camera available (or it is in use)” | Close Zoom/Teams/other tabs using the webcam, or switch USB ports; the keyboard game stays available meanwhile. |
-| “Failed to load the hand-tracking model” | The venue blocks the CDN — check the internet, or vendor the files locally (section 4). The keyboard game keeps working. |
-| Hand detection is jumpy | Improve lighting, keep the hand ~0.5–1 m from the camera, avoid a bright window behind the participant. Lower `CAMERA.HEIGHT` if the CPU is weak. |
 | Sound is silent | Browsers allow audio only after a tap/keypress — interact once with the page; also check the staff-bar sound toggle and system volume. |
 | Page scrolls when pressing Space | Doesn't happen in this game; if you embed it elsewhere, ensure the Space handler (js/game.js) is active. |
 | 404 on GitHub Pages | File names are case-sensitive — `index.html` must be exactly that; check that you uploaded the folder *contents*, not the parent folder. |
@@ -219,9 +177,8 @@ win and never silently resets the game.
 ## 9. Accessibility & performance notes
 
 - High-contrast white-on-navy text; giant timer readable from several meters.
-- Full keyboard support (Space = game, Enter = buttons, Esc = staff reset,
+- Full keyboard control (Space = everything in the game, Esc = staff reset,
   visible focus outlines).
 - `prefers-reduced-motion` disables confetti, pulses and background drift.
-- One shared `requestAnimationFrame` loop + one camera loop, both cleaned up
-  on reset — no duplicate timers, listeners, or leaked animation frames.
-- Camera tracks are fully stopped when camera mode is disabled.
+- One shared `requestAnimationFrame` loop — no duplicate timers, listeners, or
+  leaked animation frames.
